@@ -17,8 +17,7 @@
  */
 package org.bdgenomics.adam.models
 
-import com.esotericsoftware.kryo.io.{ Input, Output }
-import com.esotericsoftware.kryo.{ Kryo, Serializer }
+import org.apache.avro.Schema
 import org.bdgenomics.formats.avro._
 
 import scala.math.{ max, min }
@@ -137,14 +136,31 @@ object ReferenceRegion {
  *            which is <i>not</i> in the region -- i.e. [start, end) define a 0-based
  *            half-open interval.
  */
-case class ReferenceRegion(referenceName: String,
-                           start: Long,
-                           end: Long,
-                           orientation: Strand = Strand.Independent)
-    extends Comparable[ReferenceRegion]
+case class ReferenceRegion(var referenceName: String,
+                           var start: Long,
+                           var end: Long,
+                           var orientation: Strand = Strand.Independent)
+    extends Comparable[ReferenceRegion] with AvroRecord[ReferenceRegion]
     with Interval {
 
   assert(start >= 0 && end >= start, "Failed when trying to create region %s %d %d on %s strand.".format(referenceName, start, end, orientation))
+
+  def this() = this(null, 0, 1) // For Avro...
+
+  override def avroBinding(): List[(String, Schema, (ReferenceRegion) => AnyRef, (ReferenceRegion, Any) => Unit)] = {
+    List(("referenceName", AvroRecord.STRING,
+      (r: ReferenceRegion) => r.referenceName,
+      (r: ReferenceRegion, v: Any) => { r.referenceName = utf8ToString(v) }),
+      ("start", AvroRecord.LONG,
+        (r: ReferenceRegion) => r.start.asInstanceOf[AnyRef],
+        (r: ReferenceRegion, v: Any) => { r.start = v.asInstanceOf[Long] }),
+      ("end", AvroRecord.LONG,
+        (r: ReferenceRegion) => r.end.asInstanceOf[AnyRef],
+        (r: ReferenceRegion, v: Any) => { r.end = v.asInstanceOf[Long] }),
+      ("orientation", Strand.SCHEMA$,
+        (r: ReferenceRegion) => r.orientation,
+        (r: ReferenceRegion, v: Any) => { r.orientation = v.asInstanceOf[Strand] }))
+  }
 
   def width: Long = end - start
 
@@ -257,24 +273,5 @@ case class ReferenceRegion(referenceName: String,
     result = 41 * result + end.hashCode
     result = 41 * result + (if (orientation != null) orientation.ordinal() else 0)
     result
-  }
-}
-
-class ReferenceRegionSerializer extends Serializer[ReferenceRegion] {
-  private val enumValues = Strand.values()
-
-  def write(kryo: Kryo, output: Output, obj: ReferenceRegion) = {
-    output.writeString(obj.referenceName)
-    output.writeLong(obj.start)
-    output.writeLong(obj.end)
-    output.writeInt(obj.orientation.ordinal())
-  }
-
-  def read(kryo: Kryo, input: Input, klazz: Class[ReferenceRegion]): ReferenceRegion = {
-    val referenceName = input.readString()
-    val start = input.readLong()
-    val end = input.readLong()
-    val orientation = input.readInt()
-    new ReferenceRegion(referenceName, start, end, enumValues(orientation))
   }
 }

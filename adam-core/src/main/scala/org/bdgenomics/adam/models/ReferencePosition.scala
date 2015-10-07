@@ -17,8 +17,6 @@
  */
 package org.bdgenomics.adam.models
 
-import com.esotericsoftware.kryo.{ Kryo, Serializer }
-import com.esotericsoftware.kryo.io.{ Input, Output }
 import org.bdgenomics.formats.avro._
 
 object PositionOrdering extends ReferenceOrdering[ReferencePosition] {
@@ -81,26 +79,16 @@ object ReferencePosition extends Serializable {
   def apply(referenceName: String, pos: Long, orientation: Strand): ReferencePosition = {
     new ReferencePosition(referenceName, pos, orientation)
   }
+
 }
 
-class ReferencePosition(override val referenceName: String,
-                        val pos: Long,
-                        override val orientation: Strand = Strand.Independent)
-    extends ReferenceRegion(referenceName, pos, pos + 1, orientation)
+class ReferencePosition(posReferenceName: String,
+                        posStart: Long,
+                        posOrientation: Strand = Strand.Independent)
+    extends ReferenceRegion(posReferenceName, posStart, posStart + 1, posOrientation) {
 
-class ReferencePositionSerializer extends Serializer[ReferencePosition] {
-  private val enumValues = Strand.values()
+  def this() = this(null, 0) // For Avro...
 
-  def write(kryo: Kryo, output: Output, obj: ReferencePosition) = {
-    output.writeString(obj.referenceName)
-    output.writeLong(obj.pos)
-    output.writeInt(obj.orientation.ordinal)
-  }
+  def pos() = start
 
-  def read(kryo: Kryo, input: Input, klazz: Class[ReferencePosition]): ReferencePosition = {
-    val refName = input.readString()
-    val pos = input.readLong()
-    val orientation = input.readInt()
-    new ReferencePosition(refName, pos, enumValues(orientation))
-  }
 }

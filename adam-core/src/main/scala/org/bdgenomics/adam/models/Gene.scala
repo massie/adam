@@ -17,11 +17,6 @@
  */
 package org.bdgenomics.adam.models
 
-import org.apache.spark.SparkContext
-import org.apache.spark.rdd.RDD
-import org.bdgenomics.adam.rdd.ADAMContext._
-import org.bdgenomics.formats.avro.{ Strand, Feature }
-
 /**
  * A 'gene model' is a small, hierarchical collection of objects: Genes, Transcripts, and Exons.
  * Each Gene contains a collection of Transcripts, and each Transcript contains a collection of

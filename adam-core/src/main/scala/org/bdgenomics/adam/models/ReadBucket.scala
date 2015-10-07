@@ -17,9 +17,6 @@
  */
 package org.bdgenomics.adam.models
 
-import com.esotericsoftware.kryo.{ Kryo, Serializer }
-import com.esotericsoftware.kryo.io.{ Input, Output }
-import org.bdgenomics.adam.serialization.AvroSerializer
 import org.bdgenomics.formats.avro.AlignmentRecord
 
 /**
@@ -45,52 +42,6 @@ case class ReadBucket(unpairedPrimaryMappedReads: Iterable[AlignmentRecord] = Se
       pairedFirstSecondaryMappedReads ++
       pairedSecondSecondaryMappedReads ++
       unmappedReads
-}
-
-class ReadBucketSerializer extends Serializer[ReadBucket] {
-  val recordSerializer = new AvroSerializer[AlignmentRecord]()
-
-  def writeArray(kryo: Kryo, output: Output, reads: Iterable[AlignmentRecord]): Unit = {
-    output.writeInt(reads.size, true)
-    for (read <- reads) {
-      recordSerializer.write(kryo, output, read)
-    }
-  }
-
-  def readArray(kryo: Kryo, input: Input): Seq[AlignmentRecord] = {
-    val numReads = input.readInt(true)
-    (0 until numReads).foldLeft(List[AlignmentRecord]()) {
-      (a, b) => recordSerializer.read(kryo, input, classOf[AlignmentRecord]) :: a
-    }
-  }
-
-  def write(kryo: Kryo, output: Output, bucket: ReadBucket) = {
-    writeArray(kryo, output, bucket.unpairedPrimaryMappedReads)
-    writeArray(kryo, output, bucket.pairedFirstPrimaryMappedReads)
-    writeArray(kryo, output, bucket.pairedSecondPrimaryMappedReads)
-    writeArray(kryo, output, bucket.unpairedSecondaryMappedReads)
-    writeArray(kryo, output, bucket.pairedFirstSecondaryMappedReads)
-    writeArray(kryo, output, bucket.pairedSecondSecondaryMappedReads)
-    writeArray(kryo, output, bucket.unmappedReads)
-  }
-
-  def read(kryo: Kryo, input: Input, klazz: Class[ReadBucket]): ReadBucket = {
-    val unpairedPrimaryReads = readArray(kryo, input)
-    val pairedFirstPrimaryMappedReads = readArray(kryo, input)
-    val pairedSecondPrimaryMappedReads = readArray(kryo, input)
-    val unpairedSecondaryReads = readArray(kryo, input)
-    val pairedFirstSecondaryMappedReads = readArray(kryo, input)
-    val pairedSecondSecondaryMappedReads = readArray(kryo, input)
-    val unmappedReads = readArray(kryo, input)
-    new ReadBucket(
-      unpairedPrimaryReads,
-      pairedFirstPrimaryMappedReads,
-      pairedSecondPrimaryMappedReads,
-      unpairedSecondaryReads,
-      pairedFirstSecondaryMappedReads,
-      pairedSecondSecondaryMappedReads,
-      unmappedReads)
-  }
 }
 
 object ReadBucket {

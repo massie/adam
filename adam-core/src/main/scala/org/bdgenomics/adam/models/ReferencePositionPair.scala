@@ -17,12 +17,8 @@
  */
 package org.bdgenomics.adam.models
 
-import com.esotericsoftware.kryo.{ Kryo, Serializer }
-import com.esotericsoftware.kryo.io.{ Input, Output }
-import Ordering.Option
 import org.apache.spark.Logging
 import org.bdgenomics.adam.instrumentation.Timers.CreateReferencePositionPair
-import org.bdgenomics.adam.models.ReferenceRegion._
 import org.bdgenomics.adam.rich.RichAlignmentRecord
 import org.bdgenomics.formats.avro.AlignmentRecord
 
@@ -52,40 +48,18 @@ object ReferencePositionPair extends Logging {
   }
 }
 
-case class ReferencePositionPair(read1refPos: Option[ReferencePosition],
-                                 read2refPos: Option[ReferencePosition])
-
-class ReferencePositionPairSerializer extends Serializer[ReferencePositionPair] {
-  val rps = new ReferencePositionSerializer()
-
-  def writeOptionalReferencePos(kryo: Kryo, output: Output, optRefPos: Option[ReferencePosition]) = {
-    optRefPos match {
-      case None =>
-        output.writeBoolean(false)
-      case Some(refPos) =>
-        output.writeBoolean(true)
-        rps.write(kryo, output, refPos)
-    }
-  }
-
-  def readOptionalReferencePos(kryo: Kryo, input: Input): Option[ReferencePosition] = {
-    val exists = input.readBoolean()
-    if (exists) {
-      Some(rps.read(kryo, input, classOf[ReferencePosition]))
-    } else {
-      None
-    }
-  }
-
-  def write(kryo: Kryo, output: Output, obj: ReferencePositionPair) = {
-    writeOptionalReferencePos(kryo, output, obj.read1refPos)
-    writeOptionalReferencePos(kryo, output, obj.read2refPos)
-  }
-
-  def read(kryo: Kryo, input: Input, klazz: Class[ReferencePositionPair]): ReferencePositionPair = {
-    val read1ref = readOptionalReferencePos(kryo, input)
-    val read2ref = readOptionalReferencePos(kryo, input)
-    new ReferencePositionPair(read1ref, read2ref)
+case class ReferencePositionPair(var read1refPos: Option[ReferencePosition],
+                                 var read2refPos: Option[ReferencePosition]) extends AvroRecord[ReferencePositionPair] {
+  def this() = this(None, None) // For Avro
+  override def avroBinding() = {
+    val referencePositionSchema = new ReferencePosition().getSchema
+    List(
+      ("read1refPos", referencePositionSchema,
+        (p: ReferencePositionPair) => p.read1refPos.orNull,
+        (p: ReferencePositionPair, v: Any) => { p.read1refPos = Option(v.asInstanceOf[ReferencePosition]) }),
+      ("read2refPos", referencePositionSchema,
+        (p: ReferencePositionPair) => p.read2refPos.orNull,
+        (p: ReferencePositionPair, v: Any) => { p.read2refPos = Option(v.asInstanceOf[ReferencePosition]) }))
   }
 }
 

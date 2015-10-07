@@ -17,18 +17,15 @@
  */
 package org.bdgenomics.adam.models
 
-import com.esotericsoftware.kryo.{ Kryo, Serializer }
-import com.esotericsoftware.kryo.io.{ Output, Input }
+import org.apache.avro.Schema
+import org.apache.avro.generic.GenericData
 import org.apache.spark.Logging
 import org.apache.spark.rdd.RDD
-import org.bdgenomics.adam.rdd.ADAMContext._
-import org.bdgenomics.adam.serialization.AvroSerializer
 import org.bdgenomics.formats.avro.{
   AlignmentRecord,
-  Fragment,
-  Sequence
+  Fragment
 }
-import scala.collection.JavaConversions._
+import scala.collection.JavaConverters._
 
 object SingleReadBucket extends Logging {
   def apply(rdd: RDD[AlignmentRecord]): RDD[SingleReadBucket] = {
@@ -46,9 +43,35 @@ object SingleReadBucket extends Logging {
   }
 }
 
-case class SingleReadBucket(primaryMapped: Iterable[AlignmentRecord] = Seq.empty,
-                            secondaryMapped: Iterable[AlignmentRecord] = Seq.empty,
-                            unmapped: Iterable[AlignmentRecord] = Seq.empty) {
+case class SingleReadBucket(var primaryMapped: Iterable[AlignmentRecord] = Seq.empty,
+                            var secondaryMapped: Iterable[AlignmentRecord] = Seq.empty,
+                            var unmapped: Iterable[AlignmentRecord] = Seq.empty) extends AvroRecord[SingleReadBucket] {
+
+  def this() = this(Seq.empty, Seq.empty, Seq.empty) // For Avro...
+
+  def avroBinding() = {
+    List(
+      ("primaryMapped", Schema.createArray(AlignmentRecord.SCHEMA$),
+        (a: SingleReadBucket) => a.primaryMapped.asJava,
+        (a: SingleReadBucket, v: Any) => {
+          a.primaryMapped =
+            v.asInstanceOf[GenericData.Array[AlignmentRecord]].asScala
+        }),
+      ("secondaryMapped", Schema.createArray(AlignmentRecord.SCHEMA$),
+        (a: SingleReadBucket) => a.secondaryMapped.asJava,
+        (a: SingleReadBucket, v: Any) => {
+          a.secondaryMapped =
+            v.asInstanceOf[GenericData.Array[AlignmentRecord]].asScala
+        }),
+      ("unmapped", Schema.createArray(AlignmentRecord.SCHEMA$),
+        (a: SingleReadBucket) => a.unmapped.asJava,
+        (a: SingleReadBucket, v: Any) => {
+          a.unmapped =
+            v.asInstanceOf[GenericData.Array[AlignmentRecord]].asScala
+        })
+    )
+  }
+
   // Note: not a val in order to save serialization/memory cost
   def allReads = {
     primaryMapped ++ secondaryMapped ++ unmapped
@@ -62,7 +85,7 @@ case class SingleReadBucket(primaryMapped: Iterable[AlignmentRecord] = Seq.empty
     // start building fragment
     val builder = Fragment.newBuilder()
       .setReadName(unionReads.head.getReadName)
-      .setAlignments(seqAsJavaList(allReads.toSeq))
+      .setAlignments(allReads.toList.asJava)
 
     // is an insert size defined for this fragment?
     primaryMapped.headOption
@@ -81,37 +104,6 @@ case class SingleReadBucket(primaryMapped: Iterable[AlignmentRecord] = Seq.empty
       .foreach(n => builder.setRunId(n))
 
     builder.build()
-  }
-}
-
-class SingleReadBucketSerializer extends Serializer[SingleReadBucket] {
-  val recordSerializer = new AvroSerializer[AlignmentRecord]()
-
-  def writeArray(kryo: Kryo, output: Output, reads: Seq[AlignmentRecord]): Unit = {
-    output.writeInt(reads.size, true)
-    for (read <- reads) {
-      recordSerializer.write(kryo, output, read)
-    }
-  }
-
-  def readArray(kryo: Kryo, input: Input): Seq[AlignmentRecord] = {
-    val numReads = input.readInt(true)
-    (0 until numReads).foldLeft(List[AlignmentRecord]()) {
-      (a, b) => recordSerializer.read(kryo, input, classOf[AlignmentRecord]) :: a
-    }
-  }
-
-  def write(kryo: Kryo, output: Output, groupedReads: SingleReadBucket) = {
-    writeArray(kryo, output, groupedReads.primaryMapped.toSeq)
-    writeArray(kryo, output, groupedReads.secondaryMapped.toSeq)
-    writeArray(kryo, output, groupedReads.unmapped.toSeq)
-  }
-
-  def read(kryo: Kryo, input: Input, klazz: Class[SingleReadBucket]): SingleReadBucket = {
-    val primaryReads = readArray(kryo, input)
-    val secondaryReads = readArray(kryo, input)
-    val unmappedReads = readArray(kryo, input)
-    new SingleReadBucket(primaryReads, secondaryReads, unmappedReads)
   }
 }
 
