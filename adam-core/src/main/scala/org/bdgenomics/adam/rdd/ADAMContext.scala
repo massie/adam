@@ -20,7 +20,6 @@ package org.bdgenomics.adam.rdd
 import java.io.File
 import java.io.FileNotFoundException
 import java.util.regex.Pattern
-import htsjdk.samtools.{ IndexedBamInputFormat, SAMFileHeader, ValidationStringency }
 import htsjdk.samtools.{ ValidationStringency, SAMFileHeader, IndexedBamInputFormat }
 import org.apache.avro.Schema
 import org.apache.avro.generic.IndexedRecord
@@ -43,7 +42,7 @@ import org.bdgenomics.adam.projections.{ AlignmentRecordField, NucleotideContigF
 import org.bdgenomics.adam.rdd.contig.NucleotideContigFragmentRDDFunctions
 import org.bdgenomics.adam.rdd.features._
 import org.bdgenomics.adam.rdd.fragment.FragmentRDDFunctions
-import org.bdgenomics.adam.rdd.read.AlignmentRecordRDDFunctions
+import org.bdgenomics.adam.rdd.read.{ ADAMAlignmentRecordReadSupport, AlignmentRecordRDDFunctions }
 import org.bdgenomics.adam.rdd.variation._
 import org.bdgenomics.adam.rich.RichAlignmentRecord
 import org.bdgenomics.adam.util.{ TwoBitFile, ReferenceContigMap, ReferenceFile }
@@ -135,15 +134,20 @@ class ADAMContext(val sc: SparkContext) extends Serializable with Logging {
   def loadParquet[T](filePath: String,
                      predicate: Option[FilterPredicate] = None,
                      projection: Option[Schema] = None)(implicit ev1: T => SpecificRecord, ev2: Manifest[T]): RDD[T] = {
-    //make sure a type was specified
-    //not using require as to make the message clearer
-    if (manifest[T] == manifest[scala.Nothing])
-      throw new IllegalArgumentException("Type inference failed; when loading please specify a specific type. " +
-        "e.g.:\nval reads: RDD[AlignmentRecord] = ...\nbut not\nval reads = ...\nwithout a return type")
-
     log.info("Reading the ADAM file at %s to create RDD".format(filePath))
     val job = HadoopUtil.newJob(sc)
-    ParquetInputFormat.setReadSupportClass(job, classOf[AvroReadSupport[T]])
+
+    manifest[T] match {
+      case m if m == manifest[scala.Nothing] =>
+        //make sure a type was specified
+        //not using require as to make the message clearer
+        throw new IllegalArgumentException("Type inference failed; when loading please specify a specific type. " +
+          "e.g.:\nval reads: RDD[AlignmentRecord] = ...\nbut not\nval reads = ...\nwithout a return type")
+      case m if m == manifest[AlignmentRecord] =>
+        ParquetInputFormat.setReadSupportClass(job, classOf[ADAMAlignmentRecordReadSupport])
+      case _ =>
+        ParquetInputFormat.setReadSupportClass(job, classOf[AvroReadSupport[T]])
+    }
 
     if (predicate.isDefined) {
       log.info("Using the specified push-down predicate")
