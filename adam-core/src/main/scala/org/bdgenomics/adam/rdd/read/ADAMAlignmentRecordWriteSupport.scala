@@ -21,9 +21,11 @@ import scala.collection.JavaConverters._
 import scala.collection.mutable
 
 import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.mapreduce.Job
 import org.apache.parquet.avro.AvroWriteSupport
 import org.apache.parquet.hadoop.api.DelegatingWriteSupport
 import org.apache.parquet.hadoop.api.WriteSupport.{ WriteContext, FinalizedWriteContext }
+import org.apache.parquet.hadoop.util.ContextUtil
 import org.apache.parquet.io.api.RecordConsumer
 import org.bdgenomics.adam.models.{SequenceRecord, SequenceDictionary, RecordGroupDictionary, RecordGroup}
 import org.bdgenomics.formats.avro.AlignmentRecord
@@ -31,17 +33,25 @@ import org.json4s.jackson.Serialization.{read => jsonRead, write => jsonWrite, _
 
 private abstract class MetadataObject[T] {
   implicit val formats = org.json4s.DefaultFormats
+
   val uniqueId: String
   def serialize(t: T): String
   def deserialize(s: String): T
+
   def readFromConfiguration(conf: Configuration): Option[T] = {
     Option(conf.get(uniqueId)).map(deserialize)
   }
-  def writeToConfiguration(conf: Configuration, t: T) = {
+  def readFromConfiguration(job: Job): Option[T] = {
+    readFromConfiguration(ContextUtil.getConfiguration(job))
+  }
+  def writeToConfiguration(conf: Configuration, t: T): Unit = {
     Option(conf.get(uniqueId)).map { value =>
       throw new IllegalStateException(s"${uniqueId} is already set to ${value}")
     }
     conf.set(uniqueId, serialize(t))
+  }
+  def writeToConfiguration(job: Job, t: T): Unit = {
+    writeToConfiguration(ContextUtil.getConfiguration(job), t)
   }
 }
 
@@ -73,24 +83,24 @@ private object SequenceDictionaryMetadata extends MetadataObject[SequenceDiction
 
 object ADAMAlignmentRecordWriteSupport {
 
-  def setRecordGroupDictionary(conf: Configuration, recordGroupDictionary: RecordGroupDictionary) = {
-    RecordGroupDictionaryMetadata.writeToConfiguration(conf, recordGroupDictionary)
+  def setRecordGroupDictionary(job: Job, recordGroupDictionary: RecordGroupDictionary) = {
+    RecordGroupDictionaryMetadata.writeToConfiguration(job, recordGroupDictionary)
   }
 
-  def getRecordGroupDictionary(conf: Configuration): Option[RecordGroupDictionary] = {
-    RecordGroupDictionaryMetadata.readFromConfiguration(conf)
+  def getRecordGroupDictionary(job: Job): Option[RecordGroupDictionary] = {
+    RecordGroupDictionaryMetadata.readFromConfiguration(job)
   }
 
-  def setSequenceDictionary(conf: Configuration, seqDict: SequenceDictionary) = {
-    SequenceDictionaryMetadata.writeToConfiguration(conf, seqDict)
+  def setSequenceDictionary(job: Job, seqDict: SequenceDictionary) = {
+    SequenceDictionaryMetadata.writeToConfiguration(job, seqDict)
   }
 
-  def getSequenceDictionary(conf: Configuration): Option[SequenceDictionary] = {
-    SequenceDictionaryMetadata.readFromConfiguration(conf)
+  def getSequenceDictionary(job: Job): Option[SequenceDictionary] = {
+    SequenceDictionaryMetadata.readFromConfiguration(job)
   }
+
 }
 
-/*
 case class ReferenceMetrics(referenceName: String, minPos: Long, maxPos: Long)
 
 class ReferenceMetricBuilder(referenceName: String) {
@@ -105,13 +115,13 @@ class ReferenceMetricBuilder(referenceName: String) {
   def build(): ReferenceMetrics = {
     ReferenceMetrics(referenceName, minPos, maxPos)
   }
-}*/
+
+}
 
 class ADAMAlignmentRecordWriteSupport extends DelegatingWriteSupport[AlignmentRecord](new AvroWriteSupport) {
-  import ADAMAlignmentRecordWriteSupport._
   var recordGroups: Option[RecordGroupDictionary] = None
   var sequenceDictionary: Option[SequenceDictionary] = None
-  //var referenceMetrics = new mutable.HashMap[String, ReferenceMetrics]()
+  var referenceMetrics = new mutable.HashMap[String, ReferenceMetrics]()
 
   override def finalizeWrite(): FinalizedWriteContext = {
     var metaData: mutable.Map[String, String] = new mutable.HashMap[String, String]()
@@ -128,8 +138,8 @@ class ADAMAlignmentRecordWriteSupport extends DelegatingWriteSupport[AlignmentRe
 
   override def init(configuration: Configuration): WriteContext = {
     val writeContext = super.init(configuration)
-    recordGroups = getRecordGroupDictionary(configuration)
-    sequenceDictionary = getSequenceDictionary(configuration)
+    recordGroups = RecordGroupDictionaryMetadata.readFromConfiguration(configuration)
+    sequenceDictionary = SequenceDictionaryMetadata.readFromConfiguration(configuration)
     writeContext
   }
 

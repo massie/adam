@@ -19,21 +19,29 @@ package org.bdgenomics.adam.rdd.read
 
 import java.util
 
-import scala.collection.JavaConverters._
-
 import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.mapreduce.Job
 import org.apache.parquet.avro.AvroReadSupport
 import org.apache.parquet.hadoop.api.DelegatingReadSupport
 import org.apache.parquet.hadoop.api.ReadSupport.ReadContext
 import org.apache.parquet.io.api.{ GroupConverter, RecordMaterializer }
 import org.apache.parquet.schema.MessageType
-import org.bdgenomics.adam.models.RecordGroup
+import org.bdgenomics.adam.models.{SequenceDictionary, RecordGroupDictionary}
 import org.bdgenomics.formats.avro.AlignmentRecord
-import org.json4s.jackson.Serialization.{ read => jsonRead }
+
+object ADAMAlignmentRecordReadSupport {
+
+  def getRecordGroupDictionary(job: Job): Option[RecordGroupDictionary] = {
+    RecordGroupDictionaryMetadata.readFromConfiguration(job)
+  }
+
+  def getSequenceDictionary(job: Job): Option[SequenceDictionary] = {
+    SequenceDictionaryMetadata.readFromConfiguration(job)
+  }
+
+}
 
 class ADAMAlignmentRecordReadSupport extends DelegatingReadSupport[AlignmentRecord](new AvroReadSupport()) {
-
-  import ADAMAlignmentRecordWriteSupport._
 
   override def prepareForRead(configuration: Configuration,
                               keyValueMetaData: util.Map[String, String],

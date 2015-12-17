@@ -100,8 +100,8 @@ object Play extends Logging {
     val job = HadoopUtil.newJob(rdd.context)
     ParquetLogger.hadoopLoggerLevel(Level.SEVERE)
     ParquetOutputFormat.setWriteSupportClass(job, classOf[ADAMAlignmentRecordWriteSupport])
-    ADAMAlignmentRecordWriteSupport.setRecordGroupDictionary(ContextUtil.getConfiguration(job), recordsGroups)
-    ADAMAlignmentRecordWriteSupport.setSequenceDictionary(ContextUtil.getConfiguration(job), seqDict)
+    ADAMAlignmentRecordWriteSupport.setRecordGroupDictionary(job, recordsGroups)
+    ADAMAlignmentRecordWriteSupport.setSequenceDictionary(job, seqDict)
     ParquetOutputFormat.setCompression(job, compressCodec)
     ParquetOutputFormat.setEnableDictionary(job, !disableDictionaryEncoding)
     ParquetOutputFormat.setBlockSize(job, blockSize)
@@ -119,7 +119,8 @@ object Play extends Logging {
 
   def loadParquet[T](filePath: String,
                      predicate: Option[FilterPredicate] = None,
-                     projection: Option[Schema] = None)(implicit ev1: T => SpecificRecord, ev2: Manifest[T]): RDD[T] = {
+                     projection: Option[Schema] = None)(implicit ev1: T => SpecificRecord, ev2: Manifest[T]):
+  (RDD[T], Option[SequenceDictionary], Option[RecordGroupDictionary]) = {
     //make sure a type was specified
     //not using require as to make the message clearer
     if (manifest[T] == manifest[scala.Nothing])
@@ -137,13 +138,15 @@ object Play extends Logging {
       AvroParquetInputFormat.setRequestedProjection(job, projection.get)
     }
 
-    sc.newAPIHadoopFile(
+    (sc.newAPIHadoopFile(
       filePath,
       classOf[ParquetInputFormat[T]],
       classOf[Void],
       manifest[T].runtimeClass.asInstanceOf[Class[T]],
       ContextUtil.getConfiguration(job)
-    ).map(p => p._2).filter(p => p != null.asInstanceOf[T])
+    ).map(p => p._2).filter(p => p != null.asInstanceOf[T]),
+      ADAMAlignmentRecordReadSupport.getSequenceDictionary(job),
+      ADAMAlignmentRecordReadSupport.getRecordGroupDictionary(job))
   }
 
   def main(args: Array[String]): Unit = {
@@ -154,7 +157,12 @@ object Play extends Logging {
     println(seqDict)
     println(recordGroups)
 
-    adamParquetSave(records.coalesce(2, shuffle= true), seqDict, recordGroups, "/tmp/output")
+    val testOut = "/tmp/output"
+    adamParquetSave(records.coalesce(2, shuffle= true), seqDict, recordGroups, testOut)
+
+    val (outRecords, outSeqDict, outRecordGroups) = loadParquet[AlignmentRecord](testOut)
+    assert(seqDict == outSeqDict.get)
+    assert(recordGroups == outRecordGroups.get)
   }
 
 }
