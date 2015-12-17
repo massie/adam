@@ -97,6 +97,8 @@ class RecordGroupDictionary(val recordGroups: Seq[RecordGroup]) extends Serializ
   def apply(recordGroupName: String): RecordGroup = {
     recordGroupMap(recordGroupName)._1
   }
+
+  override def toString = s"RecordGroupDictionary($recordGroupMap)"
 }
 
 object RecordGroup {
@@ -212,4 +214,9 @@ class RecordGroup(val sample: String,
     // return
     rgr
   }
+
+  override def toString = s"RecordGroup(sample=$sample, recordGroupName=$recordGroupName, " +
+    s"sequencingCenter=$sequencingCenter, description=$description, runDate=$runDateEpoch, " +
+    s"flowOrder=$flowOrder, keySequence=$keySequence, library=$library, " +
+    s"predictedMedianInsertSize=$predictedMedianInsertSize, platform=$platform, platformUnit=$platformUnit)"
 }

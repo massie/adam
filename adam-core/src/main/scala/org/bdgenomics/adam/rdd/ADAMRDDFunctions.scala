@@ -22,6 +22,8 @@ import java.util.logging.Level
 import org.apache.avro.Schema
 import org.apache.avro.generic.IndexedRecord
 import org.apache.hadoop.mapreduce.{ OutputFormat => NewOutputFormat }
+import org.bdgenomics.adam.rdd.read.ADAMAlignmentRecordWriteSupport
+import org.bdgenomics.formats.avro.AlignmentRecord
 import org.apache.spark.{ SparkContext, Logging }
 import org.apache.spark.rdd.MetricsContext._
 import org.apache.spark.rdd.{ InstrumentedOutputFormat, RDD }
@@ -30,7 +32,7 @@ import org.bdgenomics.adam.models._
 import org.bdgenomics.adam.util.ParquetLogger
 import org.bdgenomics.utils.cli.SaveArgs
 import org.bdgenomics.utils.misc.HadoopUtil
-import org.apache.parquet.avro.AvroParquetOutputFormat
+import org.apache.parquet.avro.{ AvroWriteSupport, AvroParquetOutputFormat }
 import org.apache.parquet.hadoop.ParquetOutputFormat
 import org.apache.parquet.hadoop.metadata.CompressionCodecName
 import org.apache.parquet.hadoop.util.ContextUtil
@@ -62,6 +64,12 @@ class ADAMRDDFunctions[T <% IndexedRecord: Manifest](rdd: RDD[T]) extends Serial
 
     val job = HadoopUtil.newJob(rdd.context)
     ParquetLogger.hadoopLoggerLevel(Level.SEVERE)
+    manifest[T] match {
+      case m if m == manifest[AlignmentRecord] =>
+        ParquetOutputFormat.setWriteSupportClass(job, classOf[ADAMAlignmentRecordWriteSupport])
+      case _ =>
+        ParquetOutputFormat.setWriteSupportClass(job, classOf[AvroWriteSupport[T]])
+    }
     ParquetOutputFormat.setCompression(job, compressCodec)
     ParquetOutputFormat.setEnableDictionary(job, !disableDictionaryEncoding)
     ParquetOutputFormat.setBlockSize(job, blockSize)
@@ -73,7 +81,8 @@ class ADAMRDDFunctions[T <% IndexedRecord: Manifest](rdd: RDD[T]) extends Serial
     val recordToSave = rdd.map(p => (null, p))
     // Save the values to the ADAM/Parquet file
     recordToSave.saveAsNewAPIHadoopFile(filePath,
-      classOf[java.lang.Void], manifest[T].runtimeClass.asInstanceOf[Class[T]], classOf[InstrumentedADAMAvroParquetOutputFormat],
+      classOf[java.lang.Void], manifest[T].runtimeClass.asInstanceOf[Class[T]],
+      classOf[InstrumentedADAMAvroParquetOutputFormat],
       ContextUtil.getConfiguration(job))
   }
 
@@ -155,6 +164,6 @@ class ADAMSpecificRecordSequenceDictionaryRDDAggregator[T <% IndexedRecord: Mani
 }
 
 class InstrumentedADAMAvroParquetOutputFormat extends InstrumentedOutputFormat[Void, IndexedRecord] {
-  override def outputFormatClass(): Class[_ <: NewOutputFormat[Void, IndexedRecord]] = classOf[AvroParquetOutputFormat[IndexedRecord]]
+  override def outputFormatClass(): Class[_ <: NewOutputFormat[Void, IndexedRecord]] = classOf[ParquetOutputFormat[IndexedRecord]]
   override def timerName(): String = WriteADAMRecord.timerName
 }
