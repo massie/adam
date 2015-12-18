@@ -138,13 +138,15 @@ object Play extends Logging {
       AvroParquetInputFormat.setRequestedProjection(job, projection.get)
     }
 
-    (sc.newAPIHadoopFile(
+    val records = sc.newAPIHadoopFile(
       filePath,
       classOf[ParquetInputFormat[T]],
       classOf[Void],
       manifest[T].runtimeClass.asInstanceOf[Class[T]],
       ContextUtil.getConfiguration(job)
-    ).map(p => p._2).filter(p => p != null.asInstanceOf[T]),
+    ).map(p => p._2).filter(p => p != null.asInstanceOf[T])
+
+    (records,
       ADAMAlignmentRecordReadSupport.getSequenceDictionary(job),
       ADAMAlignmentRecordReadSupport.getRecordGroupDictionary(job))
   }
@@ -161,8 +163,10 @@ object Play extends Logging {
     adamParquetSave(records.coalesce(2, shuffle= true), seqDict, recordGroups, testOut)
 
     val (outRecords, outSeqDict, outRecordGroups) = loadParquet[AlignmentRecord](testOut)
+    /*
     assert(seqDict == outSeqDict.get)
-    assert(recordGroups == outRecordGroups.get)
+    assert(recordGroups == outRecordGroups.get)*/
+    outRecords.foreach(println)
   }
 
 }

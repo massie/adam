@@ -38,20 +38,23 @@ private abstract class MetadataObject[T] {
   def serialize(t: T): String
   def deserialize(s: String): T
 
+  def readFromMap(map: java.util.Map[String, String]): Option[T] = {
+    Option(map.get(uniqueId)).map(deserialize)
+  }
+  def writeToMap(map: java.util.Map[String, String], t: T): Unit = {
+    Option(map.get(uniqueId)).map { value =>
+      throw new IllegalStateException(s"${uniqueId} is already set to ${value}")
+    }
+    map.put(uniqueId, serialize(t))
+  }
   def readFromConfiguration(conf: Configuration): Option[T] = {
     Option(conf.get(uniqueId)).map(deserialize)
-  }
-  def readFromConfiguration(job: Job): Option[T] = {
-    readFromConfiguration(ContextUtil.getConfiguration(job))
   }
   def writeToConfiguration(conf: Configuration, t: T): Unit = {
     Option(conf.get(uniqueId)).map { value =>
       throw new IllegalStateException(s"${uniqueId} is already set to ${value}")
     }
     conf.set(uniqueId, serialize(t))
-  }
-  def writeToConfiguration(job: Job, t: T): Unit = {
-    writeToConfiguration(ContextUtil.getConfiguration(job), t)
   }
 }
 
@@ -84,21 +87,12 @@ private object SequenceDictionaryMetadata extends MetadataObject[SequenceDiction
 object ADAMAlignmentRecordWriteSupport {
 
   def setRecordGroupDictionary(job: Job, recordGroupDictionary: RecordGroupDictionary) = {
-    RecordGroupDictionaryMetadata.writeToConfiguration(job, recordGroupDictionary)
-  }
-
-  def getRecordGroupDictionary(job: Job): Option[RecordGroupDictionary] = {
-    RecordGroupDictionaryMetadata.readFromConfiguration(job)
+    RecordGroupDictionaryMetadata.writeToConfiguration(ContextUtil.getConfiguration(job), recordGroupDictionary)
   }
 
   def setSequenceDictionary(job: Job, seqDict: SequenceDictionary) = {
-    SequenceDictionaryMetadata.writeToConfiguration(job, seqDict)
+    SequenceDictionaryMetadata.writeToConfiguration(ContextUtil.getConfiguration(job), seqDict)
   }
-
-  def getSequenceDictionary(job: Job): Option[SequenceDictionary] = {
-    SequenceDictionaryMetadata.readFromConfiguration(job)
-  }
-
 }
 
 case class ReferenceMetrics(referenceName: String, minPos: Long, maxPos: Long)

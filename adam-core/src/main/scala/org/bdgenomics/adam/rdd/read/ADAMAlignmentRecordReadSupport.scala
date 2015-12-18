@@ -22,8 +22,9 @@ import java.util
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.mapreduce.Job
 import org.apache.parquet.avro.AvroReadSupport
-import org.apache.parquet.hadoop.api.DelegatingReadSupport
+import org.apache.parquet.hadoop.api.{InitContext, DelegatingReadSupport}
 import org.apache.parquet.hadoop.api.ReadSupport.ReadContext
+import org.apache.parquet.hadoop.util.ContextUtil
 import org.apache.parquet.io.api.{ GroupConverter, RecordMaterializer }
 import org.apache.parquet.schema.MessageType
 import org.bdgenomics.adam.models.{SequenceDictionary, RecordGroupDictionary}
@@ -32,11 +33,11 @@ import org.bdgenomics.formats.avro.AlignmentRecord
 object ADAMAlignmentRecordReadSupport {
 
   def getRecordGroupDictionary(job: Job): Option[RecordGroupDictionary] = {
-    RecordGroupDictionaryMetadata.readFromConfiguration(job)
+    RecordGroupDictionaryMetadata.readFromConfiguration(ContextUtil.getConfiguration(job))
   }
 
   def getSequenceDictionary(job: Job): Option[SequenceDictionary] = {
-    SequenceDictionaryMetadata.readFromConfiguration(job)
+    SequenceDictionaryMetadata.readFromConfiguration(ContextUtil.getConfiguration(job))
   }
 
 }
@@ -48,7 +49,10 @@ class ADAMAlignmentRecordReadSupport extends DelegatingReadSupport[AlignmentReco
                               fileSchema: MessageType,
                               readContext: ReadContext): RecordMaterializer[AlignmentRecord] = {
     val avroReader = super.prepareForRead(configuration, keyValueMetaData, fileSchema, readContext)
-    val recordGroups = RecordGroupDictionaryMetadata.readFromConfiguration(configuration)
+    val recordGroupDictionary = RecordGroupDictionaryMetadata.readFromMap(keyValueMetaData)
+    val sequenceDictionary = SequenceDictionaryMetadata.readFromMap(keyValueMetaData)
+    println(recordGroupDictionary)
+    println(sequenceDictionary)
 
     new RecordMaterializer[AlignmentRecord] {
       override def getRootConverter: GroupConverter = avroReader.getRootConverter
@@ -86,5 +90,10 @@ class ADAMAlignmentRecordReadSupport extends DelegatingReadSupport[AlignmentReco
         }*/
       }
     }
+  }
+
+  override def init(context: InitContext): ReadContext = {
+    val readContext = super.init(context)
+    readContext
   }
 }
